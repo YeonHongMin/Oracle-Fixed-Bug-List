@@ -4,6 +4,8 @@ import zipfile
 import io
 import os
 import re
+import sys
+from datetime import datetime
 from collections import OrderedDict
 
 
@@ -23,16 +25,21 @@ def _version_key(path):
     return tuple(numbers), version
 
 
-def parse_bugs_from_zip(zip_path, output_file):
+def parse_bugs_from_zip(zip_path, output_file=None):
     """
     지정된 경로의 모든 ZIP 파일에서 inventory.xml을 파싱하여
     Fixed Bug 정보를 추출하고 결과 파일에 저장.
+
+    Args:
+        zip_path (str): ZIP 파일이 있는 디렉터리 경로
+        output_file (str): 출력 파일명 (None이면 자동 생성)
     """
     # 디렉터리 내 모든 ZIP 파일을 버전 순서대로 정렬
     zip_files = sorted(glob.glob(f"{zip_path}/*.zip"), key=_version_key)
 
     output_lines = []           # 출력할 라인들을 저장
     bug_positions = {}          # 이미 출력된 BUG 번호 추적 (중복 방지용)
+    last_db_version = None      # 마지막 DB RU 버전 추적
 
     # 각 ZIP 파일 순회
     for zip_file in zip_files:
@@ -60,6 +67,11 @@ def parse_bugs_from_zip(zip_path, output_file):
                     output_lines.append(f"### RU {display_name}\n")
                     output_lines.append(f" *** {patch_text}\n")
 
+                    # "Database Release Update :" 뒤의 버전 정보 추출
+                    match = re.search(r'Database Release Update\s*:\s*([\d.]+)', patch_text)
+                    if match:
+                        last_db_version = match.group(1)
+
                     # XML 내 모든 bug 요소 순회
                     for bug in root.findall('.//bug'):
                         number = bug.get('number')
@@ -74,13 +86,25 @@ def parse_bugs_from_zip(zip_path, output_file):
                         bug_positions[number] = len(output_lines)
                         output_lines.append(line)
 
+    # 출력 파일명: 사용자 지정 또는 자동 생성 (Fixed_Bug_For_<버전>_<날짜>.txt)
+    if output_file is None:
+        today = datetime.now().strftime("%Y%m%d")
+        if last_db_version:
+            output_file = f"Fixed_Bug_For_{last_db_version}_{today}.txt"
+        else:
+            output_file = f"Fixed_Bug_{today}.txt"
+
     # 결과를 파일에 저장
     with open(output_file, 'w', encoding='utf-8') as f:
         for line in output_lines:
             if line is not None:
                 f.write(line)
 
+    return output_file
+
 
 if __name__ == "__main__":
-    parse_bugs_from_zip(".", "result.txt")
-    print("result.txt 파일이 생성되었습니다.")
+    # 명령줄 인자로 출력 파일명 지정 가능 (없으면 자동 생성)
+    user_output_file = sys.argv[1] if len(sys.argv) > 1 else None
+    output_file = parse_bugs_from_zip(".", user_output_file)
+    print(f"{output_file} 파일이 생성되었습니다.")

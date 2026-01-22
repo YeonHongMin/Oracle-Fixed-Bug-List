@@ -21,19 +21,27 @@ Oracle 패치 ZIP 파일 내부의 `inventory.xml`에는 해당 패치에서 수
 
 ## 사용법
 
-### 기본 실행
+### 기본 실행 (자동 파일명 생성)
 
 ```bash
 python parse_bugs.py
 ```
 
-결과 파일: `result.txt`
+마지막 Database Release Update 버전과 현재 날짜를 기반으로 파일명이 자동 생성됩니다.
 
-### 출력 파일 지정
+```
+Fixed_Bug_For_<DB RU 버전>_<날짜>.txt
+```
+
+예시: `Fixed_Bug_For_19.30.0.0.260120_20260122.txt`
+
+### 출력 파일명 직접 지정
 
 ```bash
-python parse_bugs.py output_filename.txt
+python parse_bugs.py my_output.txt
 ```
+
+사용자가 원하는 파일명을 직접 지정할 수 있습니다.
 
 ## 출력 형식
 
@@ -54,9 +62,19 @@ python parse_bugs.py output_filename.txt
 
 | 파일 | 설명 |
 |------|------|
-| `parse_bugs.py` | 메인 스크립트 |
-| `parse_bugs_org.py` | 동일 기능의 대체 스크립트 |
-| `result.txt` | 기본 출력 파일 |
+| `parse_bugs.py` | 메인 스크립트 (간결한 버전) |
+| `parse_bugs_old.py` | 동일 기능의 대체 스크립트 (상세 로깅 포함) |
+
+### 출력 파일명 형식
+
+| 조건 | 파일명 형식 |
+|------|------------|
+| 자동 생성 | `Fixed_Bug_For_<DB RU 버전>_<날짜>.txt` |
+| 사용자 지정 | 명령줄 인자로 전달한 파일명 |
+
+예시:
+- 자동: `Fixed_Bug_For_19.30.0.0.260120_20260122.txt`
+- 사용자 지정: `python parse_bugs.py my_bugs.txt` → `my_bugs.txt`
 
 ## 주의사항
 

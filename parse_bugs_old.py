@@ -14,6 +14,7 @@ import glob
 import zipfile
 import io
 import re
+from datetime import datetime
 
 
 def _version_key(path):
@@ -134,13 +135,16 @@ def process_zip_files(directory='.'):
     return found_xmls
 
 
-def process_all_xml_files(directory='.', output_file='inventory.txt'):
+def process_all_xml_files(directory='.', output_file=None):
     """
     디렉터리 내 모든 ZIP 파일의 inventory.xml을 처리하여 결과 파일에 저장
 
     Args:
         directory (str): 검색할 디렉터리 경로
-        output_file (str): 출력 파일 경로
+        output_file (str): 출력 파일 경로 (None이면 자동 생성)
+
+    Returns:
+        str: 생성된 출력 파일명
     """
     # ZIP 파일에서 inventory.xml 목록 가져오기
     zip_xmls = process_zip_files(directory)
@@ -148,12 +152,13 @@ def process_all_xml_files(directory='.', output_file='inventory.txt'):
     # inventory.xml이 없으면 경고 출력 후 종료
     if not zip_xmls:
         print(f"Warning: No ZIP files with inventory.xml found in {directory}.", file=sys.stderr)
-        return
+        return None
 
     output_lines = []           # 출력할 라인들을 저장
     bug_positions = {}          # 이미 출력된 BUG 번호 추적 (중복 방지용)
     total_bugs = 0              # 총 유니크 BUG 수
     processed_count = 0         # 처리된 파일 수
+    last_db_version = None      # 마지막 DB RU 버전 추적
 
     # 각 inventory.xml 파일 처리
     for zip_file, xml_content, file_basename in zip_xmls:
@@ -168,6 +173,11 @@ def process_all_xml_files(directory='.', output_file='inventory.txt'):
             # 버전 헤더와 패치 설명 추가
             output_lines.append(f"### RU {display_name}\n")
             output_lines.append(f" *** {patch_text}\n")
+
+            # "Database Release Update :" 뒤의 버전 정보 추출
+            match = re.search(r'Database Release Update\s*:\s*([\d.]+)', patch_text)
+            if match:
+                last_db_version = match.group(1)
 
             # 각 BUG 항목 처리 (중복 제거)
             for number, description in bug_list:
@@ -184,6 +194,14 @@ def process_all_xml_files(directory='.', output_file='inventory.txt'):
             processed_count += 1
             print(f"Processed {zip_file}/inventory.xml: {len(bug_list)} bugs found.", file=sys.stderr)
 
+    # 출력 파일명: 사용자 지정 또는 자동 생성 (Fixed_Bug_For_<버전>_<날짜>.txt)
+    if output_file is None:
+        today = datetime.now().strftime("%Y%m%d")
+        if last_db_version:
+            output_file = f"Fixed_Bug_For_{last_db_version}_{today}.txt"
+        else:
+            output_file = f"Fixed_Bug_{today}.txt"
+
     # 결과를 파일에 저장
     try:
         with open(output_file, 'w', encoding='utf-8') as f:
@@ -198,6 +216,8 @@ def process_all_xml_files(directory='.', output_file='inventory.txt'):
         print(f"Warning: Failed to save file - {e}", file=sys.stderr)
         sys.exit(1)
 
+    return output_file
+
 
 if __name__ == '__main__':
     # 스크립트 파일이 있는 디렉터리로 작업 디렉터리 변경
@@ -209,7 +229,8 @@ if __name__ == '__main__':
         # exec() 등으로 실행 시 __file__ 없음: 현재 디렉터리 사용
         pass
 
-    # 명령줄 인자로 출력 파일 경로 지정 가능 (기본값: result.txt)
-    output_file = sys.argv[1] if len(sys.argv) > 1 else 'result.txt'
-    process_all_xml_files('.', output_file)
-    print("result.txt 파일이 생성되었습니다.")
+    # 명령줄 인자로 출력 파일명 지정 가능 (없으면 자동 생성)
+    user_output_file = sys.argv[1] if len(sys.argv) > 1 else None
+    output_file = process_all_xml_files('.', user_output_file)
+    if output_file:
+        print(f"{output_file} 파일이 생성되었습니다.")
