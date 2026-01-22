@@ -1,0 +1,18 @@
+# Oracle patch ZIP files
+*.zip
+
+# Claude Code
+.claude/
+
+# Output files
+*.txt
+result.txt
+org_result.txt
+
+# Python
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
