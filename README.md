@@ -165,9 +165,37 @@ python parse_bugs_26ai.py DB my_db_bugs.txt
 
 | 파일 | 설명 |
 |------|------|
-| `parse_bugs_19c.py` | 19c 패치 추출 스크립트 |
+| `parse_bugs_19c.py` | 19c 패치 추출 스크립트 (23c 패치가 섞여 있어도 19c 파일만 필터링) |
 | `parse_bugs_26ai.py` | 23ai/26ai 패치 추출 스크립트 (DB/GI 분리) |
+| `make_info_fixed_bug.py` | KB 문서를 파싱하여 `Fixed_Bug...`에 `[Section]` 태그를 추가한 `Info_Fixed_Bug...` 생성 |
 | `parse_bugs_19c_old.py` | 19c 이전 버전 스크립트 (레거시) |
+
+## 버그 분류 태그 추가 (`make_info_fixed_bug.py`)
+
+추출된 Fixed Bug 텍스트 파일(`Fixed_Bug_*.txt`)에 Oracle Support KB 문서의 분류 체계(Section) 태그를 병합할 수 있습니다. 
+
+### 사용법
+```bash
+python make_info_fixed_bug.py "KB파일목록(콤마로 구분)" "입력파일명" "출력파일명"
+```
+
+**사용 예시 (26ai DB 패치):**
+```bash
+python make_info_fixed_bug.py "KB781900 Database 26ai Release Updates Bugs Fixed Lists.md" "Fixed_Bug_DB_For_23.26.2.0.0.txt" "Info_Fixed_Bug_DB_For_23.26.2.0.0.txt"
+```
+
+**사용 예시 (19c 여러 KB 동시 적용):**
+```bash
+python make_info_fixed_bug.py "KB850150.md,KB718940.md" "Fixed_Bug_For_19.31.txt" "Info_Fixed_Bug_For_19.31.txt"
+```
+
+- 첫 번째 인자에 여러 KB 파일 경로를 쉼표(`,`)로 구분하여 전달할 수 있습니다. (파일명에 공백이 있다면 반드시 큰따옴표 `"`로 감싸주세요.)
+- 원본 파일 자체를 덮어쓰려면 `출력파일명`을 `입력파일명`과 동일하게 지정하면 됩니다.
+
+**출력 예시:**
+```text
+     [Advance Queuing] BUG 30309807 - ORA-00600  INTERNAL ERROR CODE, ARGUMENTS  [KGLDELETELOCK-BAD-LOCK] DURING SEEK
+```
 
 ## 주의사항
 
