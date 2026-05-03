@@ -35,7 +35,7 @@ def parse_bugs_from_zip(zip_path, output_file=None):
         output_file (str): 출력 파일명 (None이면 자동 생성)
     """
     # 디렉터리 내 모든 ZIP 파일을 버전 순서대로 정렬
-    zip_files = sorted(glob.glob(f"{zip_path}/*.zip"), key=_version_key)
+    zip_files = sorted([f for f in glob.glob(f"{zip_path}/*.zip") if "19." in os.path.basename(f)], key=_version_key)
 
     output_lines = []           # 출력할 라인들을 저장
     bug_positions = {}          # 이미 출력된 BUG 번호 추적 (중복 방지용)
