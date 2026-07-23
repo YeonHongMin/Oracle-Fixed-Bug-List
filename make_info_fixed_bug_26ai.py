@@ -1,30 +1,33 @@
 """
-make_info_fixed_bug.py
-----------------------
-Fixed_Bug_For_19.31.0.0.260421_20260503.txt 을 복사하여
-Info_Fixed_Bug_For_19.31.0.0.260421_20260503.txt 를 생성하고,
-KB850150 파일에서 추출한 Section 정보를 각 BUG 라인 앞에 [Section] 형태로 삽입한다.
+make_info_fixed_bug_26ai.py
+---------------------------
+23ai / 26ai 용 Info 생성기.
+
+KB 체계 (19c와 다름):
+  - Bugs Fixed: KB781900 Database 26ai Release Updates Bugs Fixed Lists
+    → 26ai부터 DB/GI Bugs Fixed 목록이 이 문서로 통합됨 (별도 GI KB 없음)
+  - Known Issues: KB915346 등은 이슈 문서이며 Section 표 형식이 다를 수 있음
+  - Fixed_Bug 입력은 DB/GI 분리: Fixed_Bug_DB_*.txt / Fixed_Bug_GI_*.txt
+
+사용법:
+  python make_info_fixed_bug_26ai.py "KB781900....md" Fixed_Bug_DB_....txt Info_Fixed_Bug_DB_....txt
+  python make_info_fixed_bug_26ai.py "KB781900....md" Fixed_Bug_GI_....txt Info_Fixed_Bug_GI_....txt
 """
 
 import re
-import os
-
 import sys
 
 
 def extract_bug_section_map(kb_paths):
     """
     KB 파일들을 파싱하여 {bug_number: section_name} 딕셔너리를 반환한다.
-    KB 파일 구조:
-      > **Section Name**
-      > <table ...>...<td>BUG_NUMBER</td>...
     """
     bug_to_section = {}
 
-    # 굵은 섹션 헤더: > **Advance Queuing** 형태
     section_pat = re.compile(r'>\s+\*\*(.+?)\*\*\s*$')
-    # <td> 안의 BUG 번호 (href 포함 또는 plain)
-    bug_pat = re.compile(r'<td[^>]*>\s*(?:<a[^>]*>)?\s*(\d{5,9})\s*(?:</a>)?\s*(?:<strong>[A-Z]</strong>)?\s*</td>')
+    bug_pat = re.compile(
+        r'<td[^>]*>\s*(?:<a[^>]*>)?\s*(\d{5,9})\s*(?:</a>)?\s*(?:<strong>[A-Z]</strong>)?\s*</td>'
+    )
 
     for kb_path in kb_paths:
         current_section = None
@@ -37,7 +40,6 @@ def extract_bug_section_map(kb_paths):
                 if current_section:
                     for bm in bug_pat.finditer(line):
                         bug_num = bm.group(1)
-                        # 이미 등록된 것은 첫 번째 섹션 우선
                         if bug_num not in bug_to_section:
                             bug_to_section[bug_num] = current_section
 
@@ -48,7 +50,6 @@ def make_info_file(source_path, output_path, bug_to_section):
     """
     source 파일을 읽어 BUG 라인마다 [Section] 태그를 앞에 붙여 output 파일에 저장.
     """
-    # BUG 라인 패턴: "     BUG 30309807 - ..."
     bug_line_pat = re.compile(r'^(\s+BUG\s+)(\d+)(\s+-\s*.*)$')
 
     matched = 0
@@ -62,12 +63,11 @@ def make_info_file(source_path, output_path, bug_to_section):
                 prefix, bug_num, rest = m.group(1), m.group(2), m.group(3)
                 section = bug_to_section.get(bug_num)
                 if section:
-                    # "[Section] BUG 30309807 - DESCRIPTION..." 형태
                     new_prefix = prefix.replace("BUG", f"[{section}] BUG")
                     new_line = f"{new_prefix}{bug_num}{rest}\n"
                     matched += 1
                 else:
-                    new_line = line  # 섹션 정보 없는 BUG 는 그대로
+                    new_line = line
                     unmatched += 1
                 fout.write(new_line)
             else:
@@ -77,15 +77,28 @@ def make_info_file(source_path, output_path, bug_to_section):
 
 
 if __name__ == "__main__":
-    kb_files = sys.argv[1].split(',')
+    if len(sys.argv) != 4:
+        print(
+            '사용법: python make_info_fixed_bug_26ai.py '
+            '"KB781900....md" <Fixed_Bug_DB|GI파일> <Info출력파일>'
+        )
+        sys.exit(1)
+
+    kb_files = [p.strip() for p in sys.argv[1].split(',') if p.strip()]
     source_file = sys.argv[2]
     output_file = sys.argv[3]
-    
-    print("1) KB 파일에서 Bug-Section 매핑 추출 중...")
+
+    print("1) [26ai] KB 파일에서 Bug-Section 매핑 추출 중...")
+    for kb_path in kb_files:
+        print(f"   - {kb_path}")
     bug_to_section = extract_bug_section_map(kb_files)
     print(f"   추출된 Bug-Section 매핑: {len(bug_to_section)}건")
 
-    print("2) Info 파일 생성 중...")
+    print("2) [26ai] Info 파일 생성 중...")
     matched, unmatched = make_info_file(source_file, output_file, bug_to_section)
     print(f"   Section 태그 추가 완료: {matched}건 매칭, {unmatched}건 미매칭")
     print(f"3) 완료: {output_file}")
+    print(
+        "참고: KB는 important bugs만 수록. inventory Fixed Bug 전부가 "
+        "태깅되지 않는 것은 정상이다."
+    )
