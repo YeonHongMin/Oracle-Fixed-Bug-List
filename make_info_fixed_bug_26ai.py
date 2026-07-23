@@ -7,11 +7,18 @@ KB 체계 (19c와 다름):
   - Bugs Fixed: KB781900 Database 26ai Release Updates Bugs Fixed Lists
     → 26ai부터 DB/GI Bugs Fixed 목록이 이 문서로 통합됨 (별도 GI KB 없음)
   - Known Issues: KB915346 등은 이슈 문서이며 Section 표 형식이 다를 수 있음
-  - Fixed_Bug 입력은 DB/GI 분리: Fixed_Bug_DB_*.txt / Fixed_Bug_GI_*.txt
+  - Fixed_Bug 입력은 DB/GI 분리:
+      Fixed_Bug_For_<버전>_DB_<날짜>.txt
+      Fixed_Bug_For_<버전>_GI_<날짜>.txt
+  - Info 출력도 동일 규칙:
+      Info_Fixed_Bug_For_<버전>_DB_<날짜>.txt
+      Info_Fixed_Bug_For_<버전>_GI_<날짜>.txt
 
 사용법:
-  python make_info_fixed_bug_26ai.py "KB781900....md" Fixed_Bug_DB_....txt Info_Fixed_Bug_DB_....txt
-  python make_info_fixed_bug_26ai.py "KB781900....md" Fixed_Bug_GI_....txt Info_Fixed_Bug_GI_....txt
+  python make_info_fixed_bug_26ai.py "KB781900....md" \\
+    Fixed_Bug_For_23.26.3.0.0_DB_20260723.txt Info_Fixed_Bug_For_23.26.3.0.0_DB_20260723.txt
+  python make_info_fixed_bug_26ai.py "KB781900....md" \\
+    Fixed_Bug_For_23.26.3.0.0_GI_20260723.txt Info_Fixed_Bug_For_23.26.3.0.0_GI_20260723.txt
 """
 
 import re
@@ -80,7 +87,8 @@ if __name__ == "__main__":
     if len(sys.argv) != 4:
         print(
             '사용법: python make_info_fixed_bug_26ai.py '
-            '"KB781900....md" <Fixed_Bug_DB|GI파일> <Info출력파일>'
+            '"KB781900....md" <Fixed_Bug_For_..._DB|GI_....txt> '
+            '<Info_Fixed_Bug_For_..._DB|GI_....txt>'
         )
         sys.exit(1)
 

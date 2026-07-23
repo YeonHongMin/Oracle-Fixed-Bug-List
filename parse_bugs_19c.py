@@ -86,13 +86,14 @@ def parse_bugs_from_zip(zip_path, output_file=None):
                         bug_positions[number] = len(output_lines)
                         output_lines.append(line)
 
-    # 출력 파일명: 사용자 지정 또는 자동 생성 (Fixed_Bug_For_<버전>_<날짜>.txt)
+    # 출력 파일명: Fixed_Bug_For_<버전>_<날짜>.txt
+    # (26ai는 Fixed_Bug_For_<버전>_DB|GI_<날짜>.txt — 제품 구분자가 버전 뒤에 옴)
     if output_file is None:
         today = datetime.now().strftime("%Y%m%d")
         if last_db_version:
             output_file = f"Fixed_Bug_For_{last_db_version}_{today}.txt"
         else:
-            output_file = f"Fixed_Bug_{today}.txt"
+            output_file = f"Fixed_Bug_For_{today}.txt"
 
     # 결과를 파일에 저장
     with open(output_file, 'w', encoding='utf-8') as f:

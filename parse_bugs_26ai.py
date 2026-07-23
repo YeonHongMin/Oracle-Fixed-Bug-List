@@ -170,12 +170,13 @@ def parse_bugs_from_goldimg(zip_path, patch_type, output_file=None):
         return None
 
     # 출력 파일명: 사용자 지정 또는 자동 생성
+    # Fixed_Bug_For_<버전>_DB|GI_<날짜>.txt
     if output_file is None:
         today = datetime.now().strftime("%Y%m%d")
         if last_version:
-            output_file = f"Fixed_Bug_{patch_type}_For_{last_version}_{today}.txt"
+            output_file = f"Fixed_Bug_For_{last_version}_{patch_type}_{today}.txt"
         else:
-            output_file = f"Fixed_Bug_{patch_type}_{today}.txt"
+            output_file = f"Fixed_Bug_For_{patch_type}_{today}.txt"
 
     # 결과를 파일에 저장
     with open(output_file, 'w', encoding='utf-8') as f:

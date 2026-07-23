@@ -46,10 +46,11 @@ python parse_bugs_19c.py
 python parse_bugs_19c.py Fixed_Bug_For_19.32.0.0.260721_20260723.txt
 ```
 
-| 조건 | 출력 |
-|------|------|
-| 자동 | `Fixed_Bug_For_<DB RU 버전>_<날짜>.txt` |
-| 지정 | 인자로 준 파일명 |
+| 조건 | 출력 파일명 |
+|------|-------------|
+| Fixed 자동 | `Fixed_Bug_For_<DB RU 버전>_<날짜>.txt` |
+| Info (수동) | `Info_Fixed_Bug_For_<DB RU 버전>_<날짜>.txt` |
+| 사용자 지정 | 명령줄 인자로 전달한 파일명 |
 
 ### 출력 예
 
@@ -84,13 +85,14 @@ inventory/oneoffs/<patch_id>/etc/config/inventory.xml
 python parse_bugs_26ai.py          # DB + GI
 python parse_bugs_26ai.py DB
 python parse_bugs_26ai.py GI
-python parse_bugs_26ai.py DB Fixed_Bug_DB_For_23.26.3.0.0_20260723.txt
+python parse_bugs_26ai.py DB Fixed_Bug_For_23.26.3.0.0_DB_20260723.txt
 ```
 
-| 조건 | 출력 |
-|------|------|
-| DB 자동 | `Fixed_Bug_DB_For_<버전>_<날짜>.txt` |
-| GI 자동 | `Fixed_Bug_GI_For_<버전>_<날짜>.txt` |
+| 조건 | 출력 파일명 |
+|------|-------------|
+| DB 자동 | `Fixed_Bug_For_<버전>_DB_<날짜>.txt` |
+| GI 자동 | `Fixed_Bug_For_<버전>_GI_<날짜>.txt` |
+| Info (수동) | `Info_Fixed_Bug_For_<버전>_DB\|GI_<날짜>.txt` |
 
 ### 필요한 패치 예
 
@@ -112,7 +114,8 @@ python parse_bugs_26ai.py DB Fixed_Bug_DB_For_23.26.3.0.0_20260723.txt
 | 추출 스크립트 | `parse_bugs_19c.py` | `parse_bugs_26ai.py` |
 | ZIP | `COMBO_GI_RU_*.zip` (통합) | `GOLDIMG_DB_*` + `GOLDIMG_GI_*` (분리) |
 | inventory 경로 | `<id>/.../etc/config/` | `inventory/oneoffs/<id>/etc/config/` |
-| Fixed 출력 | 단일 `Fixed_Bug_For_*` | `Fixed_Bug_DB_*` / `Fixed_Bug_GI_*` |
+| Fixed 출력 | `Fixed_Bug_For_<버전>_<날짜>.txt` | `Fixed_Bug_For_<버전>_DB\|GI_<날짜>.txt` |
+| Info 출력 | `Info_Fixed_Bug_For_<버전>_<날짜>.txt` | `Info_Fixed_Bug_For_<버전>_DB\|GI_<날짜>.txt` |
 | Info 스크립트 | `make_info_fixed_bug_19c.py` | `make_info_fixed_bug_26ai.py` |
 | Bugs Fixed KB | KB850150 + **KB718940(GI)** | **KB781900 통합** (GI 전용 Bugs Fixed KB 없음) |
 
@@ -130,7 +133,8 @@ python parse_bugs_26ai.py DB Fixed_Bug_DB_For_23.26.3.0.0_20260723.txt
 |--|-----|-------------|
 | Bugs Fixed KB | KB850150 (DB) + KB718940 (GI) | KB781900 (DB/GI Bugs Fixed 통합) |
 | Known Issues (참고) | — | KB915346 등 (형식·목적이 Bugs Fixed와 다름) |
-| 입력 | `Fixed_Bug_For_19.xx.txt` | `Fixed_Bug_DB_*.txt` / `Fixed_Bug_GI_*.txt` |
+| Fixed 입력 | `Fixed_Bug_For_<버전>_<날짜>.txt` | `Fixed_Bug_For_<버전>_DB\|GI_<날짜>.txt` |
+| Info 출력 | `Info_Fixed_Bug_For_<버전>_<날짜>.txt` | `Info_Fixed_Bug_For_<버전>_DB\|GI_<날짜>.txt` |
 | 스크립트 | `make_info_fixed_bug_19c.py` | `make_info_fixed_bug_26ai.py` |
 
 KB는 **important bugs만** 수록합니다. inventory Fixed Bug의 대부분에 태그가 없는 것은 정상입니다.
@@ -149,13 +153,13 @@ python make_info_fixed_bug_19c.py ^
 ```bash
 python make_info_fixed_bug_26ai.py ^
   "KB781900 Database 26ai Release Updates Bugs Fixed Lists (2026-07-23).md" ^
-  "Fixed_Bug_DB_For_23.26.3.0.0_20260723.txt" ^
-  "Info_Fixed_Bug_DB_For_23.26.3.0.0_20260723.txt"
+  "Fixed_Bug_For_23.26.3.0.0_DB_20260723.txt" ^
+  "Info_Fixed_Bug_For_23.26.3.0.0_DB_20260723.txt"
 
 python make_info_fixed_bug_26ai.py ^
   "KB781900 Database 26ai Release Updates Bugs Fixed Lists (2026-07-23).md" ^
-  "Fixed_Bug_GI_For_23.26.3.0.0_20260723.txt" ^
-  "Info_Fixed_Bug_GI_For_23.26.3.0.0_20260723.txt"
+  "Fixed_Bug_For_23.26.3.0.0_GI_20260723.txt" ^
+  "Info_Fixed_Bug_For_23.26.3.0.0_GI_20260723.txt"
 ```
 
 출력 예:

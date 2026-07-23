@@ -8,8 +8,14 @@ KB 체계:
   - GI: KB718940 Grid Infrastructure 19 Release Updates and Revisions Bugs Fixed Lists
   - 보통 두 KB를 콤마로 함께 넘겨 COMBO Fixed_Bug 한 파일에 태깅한다.
 
+파일명 규칙:
+  Fixed: Fixed_Bug_For_<버전>_<날짜>.txt
+  Info:   Info_Fixed_Bug_For_<버전>_<날짜>.txt
+
 사용법:
-  python make_info_fixed_bug_19c.py "KB850150....md,KB718940....md" Fixed_Bug_For_19.xx.txt Info_....txt
+  python make_info_fixed_bug_19c.py "KB850150....md,KB718940....md" \\
+    Fixed_Bug_For_19.32.0.0.260721_20260723.txt \\
+    Info_Fixed_Bug_For_19.32.0.0.260721_20260723.txt
 """
 
 import re
