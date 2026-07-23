@@ -1,28 +1,35 @@
 # Oracle Patch Fixed Bug Extractor
 
-Oracle 패치 ZIP 파일에서 Fixed Bug 정보를 추출하는 Python 스크립트 모음입니다.
-**19c**와 **23ai/26ai** 두 가지 패치 체계를 지원합니다.
+Oracle 패치 ZIP의 `inventory.xml`에서 Fixed Bug 목록을 추출하고, Oracle Support KB로 Section 태그를 붙이는 Python 스크립트 모음입니다.
+
+지원 체계: **11g** · **19c** · **23ai/26ai**
 
 ## 개요
 
-Oracle 패치 ZIP 파일 내부의 `inventory.xml`에는 해당 패치에서 수정된 버그(Fixed Bug) 목록이 포함되어 있습니다. 이 스크립트는 여러 패치 파일을 한 번에 처리하여 버전별로 정리된 버그 목록을 생성합니다.
+| 단계 | 산출물 | 설명 |
+|------|--------|------|
+| 1. 추출 | `Fixed_Bug_*.txt` | 패치 ZIP → 버전별 신규 Fixed Bug |
+| 2. 태깅 | `Info_Fixed_Bug_*.txt` | KB Section을 `[카테고리] BUG …` 형태로 부착 |
+
+상위 RU는 하위 픽스를 포함하므로, 스크립트는 **BUG 번호 중복을 제거하고 처음 등장한 버전에만** 남깁니다.  
+정확한 버전별 목록을 얻으려면 **해당 버전까지 끊김 없는 패치 ZIP 세트**가 필요합니다.
 
 ## 공통 기능
 
-- 디렉터리 내 Oracle 패치 ZIP 파일 자동 탐색
-- ZIP 파일 내 `inventory.xml` 파싱
-- 버전 순서대로 자연 정렬
-- 중복 BUG 번호 자동 제거 (첫 등장 버전에만 표시)
-- 패치 설명(patch_description) 포함
+- 디렉터리 내 패치 ZIP 자동 탐색 · 버전 자연 정렬
+- `inventory.xml` 파싱 · `patch_description` 포함
+- 중복 BUG 번호 제거 (첫 등장 버전만 출력)
 
 ---
 
 ## 19c — `parse_bugs_19c.py`
 
-### 지원 패치 형식
+### 지원 ZIP
 
 - `COMBO_GI_RU_19.x.x.x.xxxxxx_pxxxxxxxx_190000_Linux-x86-64.zip`
 - `GI_RU_19.x.x.x.x_pxxxxxxxx_190000_Linux-x86-64.zip`
+
+파일명에 `19.`가 있으면 대상입니다. `OLD_` 접두 ZIP도 매칭되므로 **구버전 패치는 작업 폴더에서 제거**하세요.
 
 ### ZIP 내부 구조
 
@@ -30,62 +37,38 @@ Oracle 패치 ZIP 파일 내부의 `inventory.xml`에는 해당 패치에서 수
 <patch_id>/<sub_patch_id>/<sub_sub_patch_id>/etc/config/inventory.xml
 ```
 
-19c COMBO 패치는 Database + GI가 하나의 ZIP에 합쳐져 있으며, 내부에 여러 서브 패치의 inventory.xml이 존재합니다.
+COMBO는 Database + GI가 한 ZIP에 들어 있으며, 서브 패치별 `inventory.xml`이 여러 개입니다.
 
 ### 사용법
 
 ```bash
-# 기본 실행 (자동 파일명 생성)
 python parse_bugs_19c.py
-
-# 출력 파일명 직접 지정
-python parse_bugs_19c.py my_output.txt
+python parse_bugs_19c.py Fixed_Bug_For_19.32.0.0.260721_20260723.txt
 ```
 
-### 출력 파일명
+| 조건 | 출력 |
+|------|------|
+| 자동 | `Fixed_Bug_For_<DB RU 버전>_<날짜>.txt` |
+| 지정 | 인자로 준 파일명 |
 
-| 조건 | 파일명 형식 |
-|------|------------|
-| 자동 생성 | `Fixed_Bug_For_<DB RU 버전>_<날짜>.txt` |
-| 사용자 지정 | 명령줄 인자로 전달한 파일명 |
-
-예시: `Fixed_Bug_For_19.30.0.0.260120_20260122.txt`
-
-### 출력 형식
+### 출력 예
 
 ```
-### RU 19.4.0.0.190716_p29699097_190000_Linux-x86-64
- *** OCW RELEASE UPDATE 19.4.0.0.0 (29850993)
-     BUG 25736599 - GI 12.2.0.1 CVU POST-GI-UPGRADE CHECK OF OCR AND OCR BACKUP
-     ...
-
-### RU 19.5.0.0.191015_p30133178_190000_Linux-x86-64
- *** Database Release Update : 19.5.0.0.191015 (30125133)
-     BUG 24687075 - SPACE ADVISOR TASKS/JOBS HITTING DEADLOCKS WITH GATHER DB STATS JOBS
-     ...
-```
-
-### 필요한 패치 파일
-
-```
-├── COMBO_GI_RU_19.4.0.0.xxxxxx_pxxxxxxxx_190000_Linux-x86-64.zip
-├── COMBO_GI_RU_19.5.0.0.xxxxxx_pxxxxxxxx_190000_Linux-x86-64.zip
-├── ...
-└── COMBO_GI_RU_19.30.0.0.x_pxxxxxxxx_190000_Linux-x86-64.zip
+### RU 19.32.0.0.260721_p39618711_190000_Linux-x86-64
+ *** Database Release Update : 19.32.0.0.260721 (...)
+     BUG ........ - ...
 ```
 
 ---
 
 ## 23ai/26ai — `parse_bugs_26ai.py`
 
-### 지원 패치 형식
+Database와 Grid Infrastructure ZIP이 **분리**되어 있습니다.
 
-23ai/26ai는 Database와 Grid Infrastructure 패치가 **분리**되어 있습니다.
-
-| 패치 유형 | ZIP 파일명 패턴 |
-|-----------|----------------|
-| Database (DB) | `GOLDIMG_DB_23.x.x.xx.xx.zip` |
-| Grid Infrastructure (GI) | `GOLDIMG_GI_23.x.x.xx.xx.zip` |
+| 유형 | 패턴 |
+|------|------|
+| DB | `GOLDIMG_DB_23.*.zip` |
+| GI | `GOLDIMG_GI_23.*.zip` |
 
 ### ZIP 내부 구조
 
@@ -93,123 +76,132 @@ python parse_bugs_19c.py my_output.txt
 inventory/oneoffs/<patch_id>/etc/config/inventory.xml
 ```
 
-19c와 달리 `inventory/oneoffs/` 프리픽스가 추가되었으며, 가장 큰 inventory.xml이 메인 RU 패치에 해당합니다.
+가장 큰 `inventory.xml`을 메인 RU로 사용합니다. (7-Zip 권장, 없으면 `zipfile` 폴백)
 
 ### 사용법
 
 ```bash
-# DB + GI 모두 추출
-python parse_bugs_26ai.py
-
-# Database 패치만 추출
+python parse_bugs_26ai.py          # DB + GI
 python parse_bugs_26ai.py DB
-
-# Grid Infrastructure 패치만 추출
 python parse_bugs_26ai.py GI
-
-# 출력 파일명 직접 지정 (DB 또는 GI 단독 실행 시)
-python parse_bugs_26ai.py DB my_db_bugs.txt
+python parse_bugs_26ai.py DB Fixed_Bug_DB_For_23.26.3.0.0_20260723.txt
 ```
 
-### 출력 파일명
-
-| 조건 | 파일명 형식 |
-|------|------------|
+| 조건 | 출력 |
+|------|------|
 | DB 자동 | `Fixed_Bug_DB_For_<버전>_<날짜>.txt` |
 | GI 자동 | `Fixed_Bug_GI_For_<버전>_<날짜>.txt` |
 
-예시:
-- `Fixed_Bug_DB_For_23.26.1.0.0_20260330.txt`
-- `Fixed_Bug_GI_For_23.26.1.0.0_20260330.txt`
-
-### 출력 형식
-
-```
-### Database RU 23.5.0.24.07
- *** Database Release Update : 23.5.0.24.07 (36741532) Gold Image
-     BUG 36723967 - ORAOLEDB - INCREASE THE DEFAULT AND MAX VALUE OF INITIALLOBFETCHSIZE
-     ...
-
-### Database RU 23.26.0.26.01
- *** Database Release Update : 23.26.1.0.0 (38743669) Gold Image
-     BUG 38123456 - ...
-     ...
-```
-
-### 필요한 패치 파일
+### 필요한 패치 예
 
 ```
 ├── GOLDIMG_DB_23.4.0.24.05.zip
-├── GOLDIMG_DB_23.5.0.24.07.zip
 ├── ...
-├── GOLDIMG_DB_23.26.0.26.01.zip
+├── GOLDIMG_DB_23.26.3.0.0_p39581612_230000_Linux-x86-64.zip
 ├── GOLDIMG_GI_23.4.0.24.05.zip
-├── GOLDIMG_GI_23.5.0.24.07.zip
 ├── ...
-└── GOLDIMG_GI_23.26.0.26.01.zip
+└── GOLDIMG_GI_23.26.3.0.0_p39581618_230000_Linux-x86-64.zip
 ```
 
 ---
 
-## 19c vs 23ai/26ai 패치 구조 비교
+## 19c vs 23ai/26ai 비교
 
 | 항목 | 19c | 23ai/26ai |
 |------|-----|-----------|
-| 스크립트 | `parse_bugs_19c.py` | `parse_bugs_26ai.py` |
-| ZIP 파일 | `COMBO_GI_RU_*.zip` (DB+GI 통합) | `GOLDIMG_DB_*.zip` + `GOLDIMG_GI_*.zip` (분리) |
-| inventory.xml 경로 | `<id>/<sub_id>/<id>/etc/config/` | `inventory/oneoffs/<id>/etc/config/` |
-| 출력 | 단일 파일 | DB / GI 별도 파일 |
-| ZIP 처리 엔진 | Python zipfile | 7-Zip 우선, zipfile 폴백 |
+| 추출 스크립트 | `parse_bugs_19c.py` | `parse_bugs_26ai.py` |
+| ZIP | `COMBO_GI_RU_*.zip` (통합) | `GOLDIMG_DB_*` + `GOLDIMG_GI_*` (분리) |
+| inventory 경로 | `<id>/.../etc/config/` | `inventory/oneoffs/<id>/etc/config/` |
+| Fixed 출력 | 단일 `Fixed_Bug_For_*` | `Fixed_Bug_DB_*` / `Fixed_Bug_GI_*` |
+| Info 스크립트 | `make_info_fixed_bug_19c.py` | `make_info_fixed_bug_26ai.py` |
+| Bugs Fixed KB | KB850150 + **KB718940(GI)** | **KB781900 통합** (GI 전용 Bugs Fixed KB 없음) |
 
-## 파일 설명
+> ZIP 파일 크기와 Fixed Bug 개수는 비례하지 않습니다. (패키징·ACFS 바이너리 등)  
+> 누적 픽스 여부는 `inventory.xml` / Fixed 문서의 BUG 수로 확인하세요.
+
+---
+
+## Info 생성 (KB Section 태그)
+
+`Fixed_Bug_*.txt`에 KB 카테고리를 `[Section] BUG …`로 붙입니다.  
+**19c와 26ai는 KB 체계가 다르므로 스크립트가 분리**되어 있습니다.
+
+| | 19c | 23ai / 26ai |
+|--|-----|-------------|
+| Bugs Fixed KB | KB850150 (DB) + KB718940 (GI) | KB781900 (DB/GI Bugs Fixed 통합) |
+| Known Issues (참고) | — | KB915346 등 (형식·목적이 Bugs Fixed와 다름) |
+| 입력 | `Fixed_Bug_For_19.xx.txt` | `Fixed_Bug_DB_*.txt` / `Fixed_Bug_GI_*.txt` |
+| 스크립트 | `make_info_fixed_bug_19c.py` | `make_info_fixed_bug_26ai.py` |
+
+KB는 **important bugs만** 수록합니다. inventory Fixed Bug의 대부분에 태그가 없는 것은 정상입니다.
+
+### 19c
+
+```bash
+python make_info_fixed_bug_19c.py ^
+  "KB850150 Database 19 Release Updates and Revisions Bugs Fixed Lists (2026-07-21).md,KB718940 Grid Infrastructure 19 Release Updates and Revisions Bugs Fixed Lists (2026-07-21).md" ^
+  "Fixed_Bug_For_19.32.0.0.260721_20260723.txt" ^
+  "Info_Fixed_Bug_For_19.32.0.0.260721_20260723.txt"
+```
+
+### 26ai (DB / GI 각각)
+
+```bash
+python make_info_fixed_bug_26ai.py ^
+  "KB781900 Database 26ai Release Updates Bugs Fixed Lists (2026-07-23).md" ^
+  "Fixed_Bug_DB_For_23.26.3.0.0_20260723.txt" ^
+  "Info_Fixed_Bug_DB_For_23.26.3.0.0_20260723.txt"
+
+python make_info_fixed_bug_26ai.py ^
+  "KB781900 Database 26ai Release Updates Bugs Fixed Lists (2026-07-23).md" ^
+  "Fixed_Bug_GI_For_23.26.3.0.0_20260723.txt" ^
+  "Info_Fixed_Bug_GI_For_23.26.3.0.0_20260723.txt"
+```
+
+출력 예:
+
+```text
+     [Advance Queuing] BUG 30309807 - ORA-00600 ...
+```
+
+---
+
+## 11g
+
+| 스크립트 | 용도 |
+|----------|------|
+| `parse_bugs_11g.py` | 11.2.0.4 PSU 등 Fixed Bug 추출 |
+| `make_info_fixed_bug_11g.py` | KB866924(DB) / KB513423(GI) + 설명 fuzzy 매칭 |
+
+---
+
+## 파일 목록
 
 | 파일 | 설명 |
 |------|------|
-| `parse_bugs_19c.py` | 19c 패치 추출 스크립트 (23c 패치가 섞여 있어도 19c 파일만 필터링) |
-| `parse_bugs_26ai.py` | 23ai/26ai 패치 추출 스크립트 (DB/GI 분리) |
-| `make_info_fixed_bug.py` | KB 문서를 파싱하여 `Fixed_Bug...`에 `[Section]` 태그를 추가한 `Info_Fixed_Bug...` 생성 |
-| `parse_bugs_19c_old.py` | 19c 이전 버전 스크립트 (레거시) |
+| `parse_bugs_19c.py` | 19c Fixed Bug 추출 |
+| `parse_bugs_26ai.py` | 23ai/26ai Fixed Bug 추출 (DB/GI) |
+| `parse_bugs_11g.py` | 11g Fixed Bug 추출 |
+| `make_info_fixed_bug_19c.py` | 19c Info (KB850150 + KB718940) |
+| `make_info_fixed_bug_26ai.py` | 26ai Info (KB781900) |
+| `make_info_fixed_bug_11g.py` | 11g Info |
+| `parse_bugs_19c_old.py` | 19c 레거시 |
+| `parse_aggr_bugs.py` / `parse_dp_bugs.py` / `parse_move_bugs.py` | 키워드별 Fixed Bug 요약 추출 |
 
-## 버그 분류 태그 추가 (`make_info_fixed_bug.py`)
-
-추출된 Fixed Bug 텍스트 파일(`Fixed_Bug_*.txt`)에 Oracle Support KB 문서의 분류 체계(Section) 태그를 병합할 수 있습니다. 
-
-### 사용법
-```bash
-python make_info_fixed_bug.py "KB파일목록(콤마로 구분)" "입력파일명" "출력파일명"
-```
-
-**사용 예시 (26ai DB 패치):**
-```bash
-python make_info_fixed_bug.py "KB781900 Database 26ai Release Updates Bugs Fixed Lists.md" "Fixed_Bug_DB_For_23.26.2.0.0.txt" "Info_Fixed_Bug_DB_For_23.26.2.0.0.txt"
-```
-
-**사용 예시 (19c 여러 KB 동시 적용):**
-```bash
-python make_info_fixed_bug.py "KB850150.md,KB718940.md" "Fixed_Bug_For_19.31.txt" "Info_Fixed_Bug_For_19.31.txt"
-```
-
-- 첫 번째 인자에 여러 KB 파일 경로를 쉼표(`,`)로 구분하여 전달할 수 있습니다. (파일명에 공백이 있다면 반드시 큰따옴표 `"`로 감싸주세요.)
-- 원본 파일 자체를 덮어쓰려면 `출력파일명`을 `입력파일명`과 동일하게 지정하면 됩니다.
-
-**출력 예시:**
-```text
-     [Advance Queuing] BUG 30309807 - ORA-00600  INTERNAL ERROR CODE, ARGUMENTS  [KGLDELETELOCK-BAD-LOCK] DURING SEEK
-```
+---
 
 ## 주의사항
 
-> **중요:** 상위 버전 패치는 하위 버전의 모든 Fixed Bug을 포함하고 있습니다.
-
-각 스크립트는 버전에서 **새로 추가된 Fixed Bug만** 출력합니다 (중복 제거). 따라서 정확한 버전별 Fixed Bug 목록을 얻으려면 **해당 버전까지의 모든 패치 파일이 필요**합니다.
-
-중간 버전이 누락되면 해당 버전의 Fixed Bug이 다른 버전에 잘못 표시될 수 있습니다.
+1. **누적 패치 세트**: 중간 RU ZIP이 빠지면 신규 BUG가 잘못된 버전에 잡힐 수 있습니다.
+2. **OLD_ ZIP**: 19c 스크립트는 `OLD_COMBO_…`도 `19.` 때문에 포함합니다. 구 패치는 폴더에서 빼세요.
+3. **Info 태그율**: KB important 목록 ≪ inventory 전체이므로 미매칭이 많습니다.
+4. **ZIP 크기**: 상위 RU ZIP이 하위보다 작을 수 있습니다. 픽스 누적과 무관합니다.
 
 ## 요구사항
 
 - Python 3.6+
-- 표준 라이브러리만 사용 (추가 설치 불필요)
-- **26ai 스크립트**: [7-Zip](https://www.7-zip.org/) 설치 권장 (대용량 ZIP 처리 성능 향상, 미설치 시 Python zipfile로 폴백)
+- 표준 라이브러리만 사용
+- `parse_bugs_26ai.py`: [7-Zip](https://www.7-zip.org/) 권장
 
 ## 라이선스
 
