@@ -24,6 +24,8 @@ KB 체계 (19c와 다름):
 import re
 import sys
 
+from merge_info_sections import merge_section_lines
+
 
 def extract_bug_section_map(kb_paths):
     """
@@ -55,15 +57,16 @@ def extract_bug_section_map(kb_paths):
 
 def make_info_file(source_path, output_path, bug_to_section):
     """
-    source 파일을 읽어 BUG 라인마다 [Section] 태그를 앞에 붙여 output 파일에 저장.
+    source 파일을 읽어 BUG 라인마다 [Section] 태그를 붙이고,
+    연속된 동일 Section은 헤더 1줄로 병합해 output 파일에 저장.
     """
     bug_line_pat = re.compile(r'^(\s+BUG\s+)(\d+)(\s+-\s*.*)$')
 
     matched = 0
     unmatched = 0
+    tagged_lines = []
 
-    with open(source_path, encoding='utf-8') as fin, \
-         open(output_path, 'w', encoding='utf-8') as fout:
+    with open(source_path, encoding='utf-8') as fin:
         for line in fin:
             m = bug_line_pat.match(line.rstrip('\n'))
             if m:
@@ -71,14 +74,16 @@ def make_info_file(source_path, output_path, bug_to_section):
                 section = bug_to_section.get(bug_num)
                 if section:
                     new_prefix = prefix.replace("BUG", f"[{section}] BUG")
-                    new_line = f"{new_prefix}{bug_num}{rest}\n"
+                    tagged_lines.append(f"{new_prefix}{bug_num}{rest}\n")
                     matched += 1
                 else:
-                    new_line = line
+                    tagged_lines.append(line)
                     unmatched += 1
-                fout.write(new_line)
             else:
-                fout.write(line)
+                tagged_lines.append(line)
+
+    with open(output_path, 'w', encoding='utf-8') as fout:
+        fout.writelines(merge_section_lines(tagged_lines))
 
     return matched, unmatched
 

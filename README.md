@@ -9,7 +9,7 @@ Oracle 패치 ZIP의 `inventory.xml`에서 Fixed Bug 목록을 추출하고, Ora
 | 단계 | 산출물 | 설명 |
 |------|--------|------|
 | 1. 추출 | `Fixed_Bug_*.txt` | 패치 ZIP → 버전별 신규 Fixed Bug |
-| 2. 태깅 | `Info_Fixed_Bug_*.txt` | KB Section을 `[카테고리] BUG …` 형태로 부착 |
+| 2. 태깅 | `Info_Fixed_Bug_*.txt` | KB Section 태그 부착 + Section 헤더 병합 |
 
 상위 RU는 하위 픽스를 포함하므로, 스크립트는 **BUG 번호 중복을 제거하고 처음 등장한 버전에만** 남깁니다.  
 정확한 버전별 목록을 얻으려면 **해당 버전까지 끊김 없는 패치 ZIP 세트**가 필요합니다.
@@ -126,7 +126,7 @@ python parse_bugs_26ai.py DB Fixed_Bug_For_23.26.3.0.0_DB_20260723.txt
 
 ## Info 생성 (KB Section 태그)
 
-`Fixed_Bug_*.txt`에 KB 카테고리를 `[Section] BUG …`로 붙입니다.  
+`Fixed_Bug_*.txt`에 KB 카테고리 Section 태그를 붙입니다.  
 **19c와 26ai는 KB 체계가 다르므로 스크립트가 분리**되어 있습니다.
 
 | | 19c | 23ai / 26ai |
@@ -143,7 +143,7 @@ KB는 **important bugs만** 수록합니다. inventory Fixed Bug의 대부분에
 
 ```bash
 python make_info_fixed_bug_19c.py ^
-  "KB850150 Database 19 Release Updates and Revisions Bugs Fixed Lists (2026-07-21).md,KB718940 Grid Infrastructure 19 Release Updates and Revisions Bugs Fixed Lists (2026-07-21).md" ^
+  "KB850150 Database 19 Release Updates and Revisions Bugs Fixed Lists (2026-08-03).md,KB718940 Grid Infrastructure 19 Release Updates and Revisions Bugs Fixed Lists (2026-08-03).md" ^
   "Fixed_Bug_For_19.32.0.0.260721_20260723.txt" ^
   "Info_Fixed_Bug_For_19.32.0.0.260721_20260723.txt"
 ```
@@ -152,20 +152,48 @@ python make_info_fixed_bug_19c.py ^
 
 ```bash
 python make_info_fixed_bug_26ai.py ^
-  "KB781900 Database 26ai Release Updates Bugs Fixed Lists (2026-07-23).md" ^
+  "KB781900 Database 26ai Release Updates Bugs Fixed Lists (2026-08-03).md" ^
   "Fixed_Bug_For_23.26.3.0.0_DB_20260723.txt" ^
   "Info_Fixed_Bug_For_23.26.3.0.0_DB_20260723.txt"
 
 python make_info_fixed_bug_26ai.py ^
-  "KB781900 Database 26ai Release Updates Bugs Fixed Lists (2026-07-23).md" ^
+  "KB781900 Database 26ai Release Updates Bugs Fixed Lists (2026-08-03).md" ^
   "Fixed_Bug_For_23.26.3.0.0_GI_20260723.txt" ^
   "Info_Fixed_Bug_For_23.26.3.0.0_GI_20260723.txt"
 ```
 
-출력 예:
+---
+
+## Section 병합 — `merge_info_sections.py`
+
+Info 생성 시 연속된 동일 Section을 **헤더 1줄 + BUG 목록** 형식으로 병합합니다.  
+`make_info_fixed_bug_19c.py`, `make_info_fixed_bug_26ai.py`, `make_info_fixed_bug_11g.py`는 생성 과정에 자동 적용됩니다.
+
+**인라인 (병합 전)**
 
 ```text
-     [Advance Queuing] BUG 30309807 - ORA-00600 ...
+     [Generic] BUG 37156413 - FIX_CONTROL FOR ...
+     [Generic] BUG 34461045 - IMPROVE ORA-600 ...
+     BUG 35159824 - ADD DB ROLE INTO THE ALERT LOG ...
+```
+
+**병합 후**
+
+```text
+     [Generic]
+     BUG 37156413 - FIX_CONTROL FOR ...
+     [Generic]
+     BUG 34461045 - IMPROVE ORA-600 ...
+     BUG 35159824 - ADD DB ROLE INTO THE ALERT LOG ...
+```
+
+미태그 BUG는 Section 그룹을 끊습니다. 이미 병합된 파일에 재실행해도 결과가 바뀌지 않습니다.
+
+### 기존 Info 파일만 병합
+
+```bash
+python merge_info_sections.py Info_Fixed_Bug_For_19.31.0.0.260421_20260521.txt
+python merge_info_sections.py input.txt output.txt
 ```
 
 ---
@@ -175,7 +203,7 @@ python make_info_fixed_bug_26ai.py ^
 | 스크립트 | 용도 |
 |----------|------|
 | `parse_bugs_11g.py` | 11.2.0.4 PSU 등 Fixed Bug 추출 |
-| `make_info_fixed_bug_11g.py` | KB866924(DB) / KB513423(GI) + 설명 fuzzy 매칭 |
+| `make_info_fixed_bug_11g.py` | KB866924(DB) / KB513423(GI) + 설명 fuzzy 매칭 + Section 병합 |
 
 ---
 
@@ -186,11 +214,25 @@ python make_info_fixed_bug_26ai.py ^
 | `parse_bugs_19c.py` | 19c Fixed Bug 추출 |
 | `parse_bugs_26ai.py` | 23ai/26ai Fixed Bug 추출 (DB/GI) |
 | `parse_bugs_11g.py` | 11g Fixed Bug 추출 |
-| `make_info_fixed_bug_19c.py` | 19c Info (KB850150 + KB718940) |
-| `make_info_fixed_bug_26ai.py` | 26ai Info (KB781900) |
-| `make_info_fixed_bug_11g.py` | 11g Info |
+| `make_info_fixed_bug_19c.py` | 19c Info (KB850150 + KB718940, Section 병합 포함) |
+| `make_info_fixed_bug_26ai.py` | 26ai Info (KB781900, Section 병합 포함) |
+| `make_info_fixed_bug_11g.py` | 11g Info (fuzzy 매칭, Section 병합 포함) |
+| `merge_info_sections.py` | Info Section 헤더 병합 (단독 실행 가능) |
 | `parse_bugs_19c_old.py` | 19c 레거시 |
 | `parse_aggr_bugs.py` / `parse_dp_bugs.py` / `parse_move_bugs.py` | 키워드별 Fixed Bug 요약 추출 |
+
+### 테스트
+
+```bash
+python -m unittest discover -s test -v
+```
+
+| 테스트 | 검증 내용 |
+|--------|-----------|
+| `test/test_merge_info_sections.py` | Section 병합·idempotent·미태그 BUG 분리 |
+| `test/test_make_info_fixed_bug_19c.py` | KB 매핑·Info 생성·병합 통합 |
+
+픽스처: `test/fixtures/sample_kb_*.md`, `sample_fixed_bug.txt`
 
 ---
 
@@ -199,7 +241,8 @@ python make_info_fixed_bug_26ai.py ^
 1. **누적 패치 세트**: 중간 RU ZIP이 빠지면 신규 BUG가 잘못된 버전에 잡힐 수 있습니다.
 2. **OLD_ ZIP**: 19c 스크립트는 `OLD_COMBO_…`도 `19.` 때문에 포함합니다. 구 패치는 폴더에서 빼세요.
 3. **Info 태그율**: KB important 목록 ≪ inventory 전체이므로 미매칭이 많습니다.
-4. **ZIP 크기**: 상위 RU ZIP이 하위보다 작을 수 있습니다. 픽스 누적과 무관합니다.
+4. **KB 갱신**: KB 문서가 업데이트되면 동일 Fixed_Bug라도 Section 태그 수가 변할 수 있습니다. (태그 소실·신규 태그 모두 가능)
+5. **ZIP 크기**: 상위 RU ZIP이 하위보다 작을 수 있습니다. 픽스 누적과 무관합니다.
 
 ## 요구사항
 

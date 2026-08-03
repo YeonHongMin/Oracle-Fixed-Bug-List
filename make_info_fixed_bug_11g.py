@@ -13,6 +13,8 @@ import re
 import sys
 from difflib import SequenceMatcher
 
+from merge_info_sections import merge_info_file
+
 
 REFERENCED_BUG_PATTERN = re.compile(
     r"(?:fix(?:es)?\s+for\s+)?bug\s+(\d{5,9})",
@@ -446,4 +448,6 @@ if __name__ == "__main__":
         desc_sequence_entries,
     )
     print(f"   Section 태그 추가 완료: {matched}건 매칭, {unmatched}건 미매칭")
-    print(f"3) 완료: {output_file}")
+    print("3) [11g] Section 병합 중...")
+    merge_info_file(output_file)
+    print(f"4) 완료: {output_file}")
