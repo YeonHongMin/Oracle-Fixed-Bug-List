@@ -1,0 +1,262 @@
+# Oracle Fixed Bugs: ASSM Bitmap Block / Free Space 관련 버그 Summary (19.4 ~ 19.31)
+
+이 문서는 Oracle 19c Fixed Bug List(19.4 ~ 19.32)에서 **ASSM bitmap block의 free space 관리와
+관련된 버그**(넓은 기준)를 Database Release Update 버전별로 취합한 문서입니다.
+
+**대상 증상 (필터 기준):**
+- ASSM 환경에서 수 GB 단일 테이블에 1건 INSERT 시 60~90초 이상 소요
+- rollback 후 재수행하면 1초 이내 완료 (첫 실행이 stale FS1 블록들을 정리하기 때문)
+- 원인: INSERT row 크기가 FS1(free 0~25%) 블록의 실제 가용 공간(row + PCTFREE 여유분)보다
+  커서 insert 실패(reject) → free block을 찾기 위해 ASSM L1/L2 bitmap 블록을 반복 스캔
+
+**포함 기준 (관련성이 조금이라도 있으면 포함):**
+- ASSM bitmap(FS1~FS4) 상태 관리 / free block search 경로 (KTSP*/KTSB*/KTSJ 레이어)
+- FSG(free space group) 캐시 / free list 관리
+- Segment free space / PCTFREE / HWM 관련
+- INSERT/DELETE/DML 성능 저하 (slow insert 계열)
+- Segment space leak / space allocation
+- ASSM segment repair / verify (진단·복구 도구 포함)
+
+**제외 기준:**
+- ASM diskgroup / ACFS / ADVM / KFOD 등 스토리지 계층의 free space
+- Shared pool / SGA / PGA heap의 freelist, space leak (ORA-600 [729]/[730] 메모리 leak)
+- GTT / HCC / Blockchain / Spatial / AQ / Streams 등 전용 오브젝트 한정 성능 이슈 중
+  ASSM free space 경로와 무관한 것
+- CTWR/ENQ CT global space management (switchover 관련), RAC GC freelist 등
+- 순수 SQL 옵티마이저 / 분산 / 감사(Audit) 이슈
+
+**태그:**
+- **[ASSM]**: ASSM 명시 — bitmap 상태 불일치, segment repair 등
+- **[KTSP]**: KTSB/KTSP/KTSJ space transaction 레이어 (ASSM bitmap block 처리 코드 경로)
+- **[FSG]**: FSG(free space group) 캐시 / free list 관리
+- **[FREE-SPACE]**: segment free space / PCTFREE / HWM / extent 관련
+- **[SLOW-DML]**: INSERT/DELETE/DML 성능 저하
+- **[SPACE-LEAK]**: segment space leak
+- **[SEGMENT-REPAIR]**: DBMS_REPAIR.SEGMENT_FIX_STATUS / DBMS_SPACE_ADMIN repair·verify
+
+---
+
+## 리서치 결과 (참고): 증상과 정확히 일치하는 것은 구버전 버그 + MOS 문서
+
+본 증상("첫 INSERT만 느리고 rollback 후 재수행하면 즉시 완료", FS1 블록 반복 reject/스캔)과
+**1:1로 일치하는 공식 문서는 19c fixed bug list가 아니라 아래 자료**입니다:
+
+- **Bug 7411960** - "A SIMPLE INSERT CAUSES LOTS OF 'DB FILE SEQUENTIAL READ' WAITS"
+  FS1로 표시됐지만 실제로는 row를 수용할 공간이 없는 블록을 insert가 하나씩 읽어 reject.
+  Oracle은 "expected behavior"로 종결. (19c fixed bug list 미수록, 11g 시절 버그)
+- **MOS Doc ID 1263496.1 "INSERT slow on ASSM"** - 위 버그를 근거로 하는 공식 설명 문서.
+  Workaround: 대량 DML 후 `EXEC DBMS_REPAIR.SEGMENT_FIX_STATUS('owner','table')`,
+  또는 PCTFREE 상향. 진단: event 10320 level 3 + 10612 level 1 trace에서
+  `ktspsrch` / `kdt_bseg_srch_cbk: failed ... mark full` 반복 확인.
+- **Bug 13641076** - "High buffer gets for insert statement - rejection list does not fire"
+  ASSM space search cache(rejection list) 관련. fix는 blacklist를 세션 기반으로 변경.
+- **Bug 19791273** - "Poor UPDATE SQL performance due to space search cache for updates
+  on ASSM segment" (workaround: event 10019)
+- **Fix Control 32075777** (= Bug 32234161) - ASSM segment repair 활성화.
+  `_fix_control='32075777:ON'` 설정 시 `x$ktsp_repair_list`가 채워지고 bitmap 상태 불일치가
+  백그라운드로 보정됨 (19.19 사례 블로그에서 확인).
+
+출처:
+- https://jonathanlewis.wordpress.com/2018/01/09/assm-argh/ (FS1 35,001블록 실험 + MOS 1263496.1)
+- https://www.modb.pro/db/62761 (MOS 1263496.1 전문 인용)
+- https://forums.oracle.com/ords/apexds/post/assm-and-pctfree-bug-2779 (Bug 7411960 인용)
+- https://krotovks.com/2024/05/04/unexplained-growth-a-table-size-oracle-19-19-bug-30265523/ (fix control 32075777 사례)
+- https://www.modb.pro/db/411205 (Bug 13641076 / 19791273 사례)
+
+---
+
+## Database Release Update : 19.4.0.0.190716 (29834717)
+---
+
+- **[FSG]** BUG 29225758 - ORA-00600 [KTSLA_ADD_FSG-HBBPIN-1] AND OTHER ASSERTS SEEN DURING SF_STRESS TEST
+- **[SLOW-DML]** BUG 28819640 - INSERT SLOWNESS ON HCC TABLES  ※ HCC 압축 테이블 한정, ASSM 스캔과는 별개 메커니즘(관련성 낮음)
+- **[FREE-SPACE]** BUG 28889730 - EXCESSIVE SPACE USAGE FOR HUGE TABLES DOING DELETE COMMIT INSERT AFTER FIX 28827055  ※ DELETE된 공간 미재사용 → 세그먼트 팽창, ASSM free space 재사용 실패 계열
+- **[ASSM]** BUG 29266899 - DBMS_SPACE_ADMIN.TABLESPACE_DUMP_BITMAPS DUMPS THE BLOCK AS CORRUPT BROKEN  ※ ASSM bitmap dump 진단 도구
+- **[FSG]** BUG 29331209 - ERROR IN UPDATING FSG CACHE IN HBB LEADING TO REPEATED UNLINKING, HIGH REDO GENERATION, AND PERFORMANCE DEGRADATION  ※ FSG 캐시 갱신 오류 → free block 후보 관리 반복 unlink/link → DML 성능 저하
+- **[KTSP]** BUG 29353432 - PDB_RELOCATE  HIT ORA 600 [KTSBIFMT CLSCHK_KCBNEW_14] IN RELOCATED PDB  ※ KTSB(bitmap block) 포맷 경로
+
+## Database Release Update : 19.5.0.0.191015 (30125133)
+---
+
+- **[FSG]** BUG 29625065 - POSSIBLE SPACE BLOCK CORRUPTION WHEN FSG BLOCKS ARE ADDED  ※ FSG 블록 추가 시 ASSM space block 손상 가능성
+
+## Database Release Update : 19.6.0.0.200114 (30557433)
+---
+
+- **[KTSP]** BUG 27729678 - BLOCK CORRUPTION&amp;ORA-600 [KTSBLKCHECKERROR] DURING PDB HOT CLONE TEST W/ SF  ※ KTS space block 체크
+- **[SLOW-DML]** BUG 29841687 - ENQ  TX - CONTENTION WAIT DURING CONCURRENT SECURE FILE INSERTS PERFORMANCE ISSUE  ※ SecureFile LOB 동시 insert 경합(관련성 낮음)
+
+## Database Release Update : 19.7.0.0.200414 (30869156)
+---
+
+- **[ASSM]** BUG 30265523 - BLOCKS ARE NOT MARKED AS FREE IN ASSM AFTER DELETE - 12.2 AND LATER  ※ ★핵심 후보: DELETE 후 블록이 ASSM bitmap에 free로 마킹되지 않아 free block search 반복 실패 계열. fix control 32075777 관련 (19.19 실사례 블로그 존재)
+
+## Database Release Update : 19.8.0.0.200714 (31281355)
+---
+
+- **[KTSP]** BUG 29960884 - IMPROVE DIAGNOSABILITY OF ORA-600 [KTSPFMTHWM]  ※ KTSP format HWM 경로
+- **[KTSP]** BUG 30208723 - NON-DESTRUCTIVE SQL/DML/DDL WORKLOAD, BACKGROUND KTSJ SLAVE HITS ORA-600[KCL_IMC_OPEN_LOCK_7] AND OTHER ASSERTS LEADING TO INST CRASH  ※ KTSJ(space mgmt) 슬레이브
+- **[KTSP]** BUG 30691857 - AIM ORA-7445 [KTSPPFH] - KTSPPFH
+- **[KTSP]** BUG 31001017 - NON-DESTRUCTIVE DML/DDL STRESS WORKLOAD, BACKGROUND KTSJ SLAVE HITS ORA-7445 [KDB4CHK1()+656]
+
+## Database Release Update : 19.9.0.0.201020 (31771877)
+---
+
+- **[KTSP]** BUG 30662736 - ORA-00600  [KTSPGFB-ADG-1] WITH PATCH  23702338 APPLIED  ※ KTSP get free block 경로
+
+## Database Release Update : 19.10.0.0.210119 (32218454)
+---
+
+- **[KTSP]** BUG 28338211 - XF19.1PX_ADW - TRC - KTSPLSTCHG - ORA-600 [KTSPLSTCHG-H]  ※ KTSP list change (bitmap 상태 변경) 경로
+- **[KTSP]** BUG 29695987 - XF20.1BIGSCN_HIPU3_REL - TRC - KTSPGETNEXTL1FORSCAN - ORA-600 [KTSPNEXTL1 4]  ※ ★핵심 후보: ktspGetNextL1ForScan = ASSM free block을 찾기 위해 L1 bitmap을 순차 스캔하는 바로 그 함수 (증상의 코드 경로와 정확히 일치, 단 표면 증상은 ORA-600)
+- **[FREE-SPACE]** BUG 29814995 - ALTER INDEX COALESCE CLEANUP DOES NOT REUSE FREE BLOCKS AS PART OF ORPHAN ROWS CLEANUP
+- **[ASSM]** BUG 30363311 - DBMS_SPACE.UNUSED_SPACE FOR TEXT INDEX CAUSES ORA-600[KTSIRCINFO_NUM1]
+- **[ASSM]** BUG 30441277 - DSTER - IMPROVE TRACE OUTPUT OF DBMS_SPACE_ADMIN.SEGMENT_DUMP  ※ ASSM segment dump 진단 도구
+- **[KTSP]** BUG 30494259 - DUMP SEGMENT HEADER BLOCK AND REDOS FOR ORA-8103 AND KCBZ_OBJDCHK - FOLLOWON BUG FOR TXN VVH_BUG-29054117 [BUG 29054117]
+- **[KTSP]** BUG 30843271 - NON-DESTRUCTIVE SQL/DML/DDL STRESS WORKLOAD, INSERT FOLLOWED BY COMMIT LEADS TO ORA-600 [KTSPLSTCHG_1]  ※ INSERT+COMMIT 시 bitmap 상태 변경 경로
+- **[KTSP]** BUG 31044145 - NON-DESTRUCTIVE DML/DDL STRESS WORKLOAD, PMOP HITS ORA-600 [KTSPLSTCHG-H]
+- **[FREE-SPACE]** BUG 31383464 - INDEX PCTFREE AND INI_TRANS CHANGED BY ALTER TABLE MOVE ONLINE  ※ PCTFREE 관련 (증상 원인 요소)
+- **[KTSP]** BUG 31496174 - NON-DESTRUCTIVE INTERLEAVED SQL/DML/DDL STRESS WORKLOAD, COMMIT AFTER DIRECT PATH INSERT HITS ORA-600 [KTSPGFBLK3 KCBZ_OBJDCHK]  ※ KTSP get free block 경로
+- **[KTSP]** BUG 31560592 - RA-600 [KTSPFPBLK CLSVIOL_KCBGCUR_9] - KCBGCUR (RTI 22998693)
+- **[ASSM]** BUG 31735662 - DBMS_SPACE_ADMIN TABLESPACE VERIFY PRINTS INCORRECT RELFNO AFTER BUG 22975048
+- **[ASSM]** BUG 32234161 - FORCE FULL REPAIR ENABLED BY FIX CONTROL AND POPULATE REPAIR LIST EVEN IF _ASSM_SEGMENT_REPAIR_BG=FALSE  ※ ★핵심 후보: fix control 32075777 = ASSM segment repair 제어. bitmap free space 상태 불일치를 보정하는 repair list 메커니즘
+
+## Database Release Update : 19.11.0.0.210420 (32545013)
+---
+
+- **[KTSP]** BUG 29517443 - ORA-600 [KTSLFSP FREEING TWICE] ORA-600 [KOKEDKLOB1] BY UPDATE OF VARRAY AS LOB MOVING TO DIFFERENT PARTITION
+- **[SLOW-DML]** BUG 31355339 - COVID-19  INSERT INTO CLUSTERED TABLE SLOW ON 19C  ※ 19c insert 지연 성능 버그 (대상은 clustered table 한정)
+- **[SEGMENT-REPAIR]** BUG 31532176 - AH  ASSM_SEGMENT_VERIFY VALIDATES LARGE EXTENT  ※ DBMS_SPACE_ADMIN.ASSM_SEGMENT_VERIFY 진단 도구
+- **[KTSP]** BUG 31634510 - AH  IMPROVE ORA-600 [KTSBVINI-1] TRACE OUTPUT
+- **[SEGMENT-REPAIR]** BUG 31767852 - ORA-600 [KTSPBLKCHEKERROR] AFTER USING DBMS_REPAIR.SEGMENT_FIX_STATUS  ※ ★주목: SEGMENT_FIX_STATUS는 MOS 1263496.1의 바로 그 workaround — 이 증상 계열과 직접 연결되는 도구
+
+## Database Release Update : 19.12.0.0.210720 (32904851)
+---
+
+- **[KTSP]** BUG 31696043 - ORA-00600[KTSPTRN_FIX-EXTMAP] ON LOB DURING INSERT  ※ INSERT 중 KTSP space transaction 경로
+
+## Database Release Update : 19.15.0.0.220419 (33806152)
+---
+
+- **[KTSP]** BUG 32253703 - AIM ORA-600 [KTSLFSP FREEING TWICE] - KTSLFSP  ※ KTSLFSP = space layer free space 처리
+- **[KTSP]** BUG 32580378 - CONTROLLED CONCURRENT DDL/DML WORKLOAD ON MULTIPLE PDBS, COMMIT AFTER INSERT INTO HASH PARTITIONED TABLE HITS ORA-600 [KTSPLSTCHG-H]
+
+## Database Release Update : 19.16.0.0.220719 (34133642)
+---
+
+- **[KTSP]** BUG 32917969 - ORA-00600 [KTSBNEW OBJDCHK_KCBNEW_3] ON QUEUE TABLE WITH INDEXE REBUILD  ※ KTSB bitmap new block 경로
+- **[ASSM]** BUG 33504626 - DBMS_SPACE_ADMIN.TABLESPACE_DUMP_BITMAPS DUMPS FFB AS CORRUPT  ※ FFB(first free block) dump 진단 도구
+- **[KTSP]** BUG 33440899 - PRINT MORE INFO FOR ORA-600 [KTSPFMTHWM]  TSN, RDBA AND DUMP THE SEGMENT HEADER BLOCK
+- **[KTSP]** BUG 32670769 - ADD CUSTOMIZED INCIDENT DUMP FOR KTSP ALIGNMENT ASSERTS
+
+## Database Release Update : 19.17.0.0.221018 (34419443)
+---
+
+- **[SPACE-LEAK]** BUG 33647498 - SPACE LEAK FOR DEDUPLICATED SECUREFILE LOBS ON APPEND/DELETE OPERATIONS
+- **[KTSP]** BUG 33784447 - AH  DB23 PROJECT 84763  CONSIDER CONVERTING ORA-600 [KTSPNSC_GET_PARTKCTPH-1] SEEN IN GENN TO PDB-SPECIFIC ASSERT OR SOFT ASSERT
+- **[KTSP]** BUG 29967980 - XF20.1PX_SLVREUSE_IMCDT - TRC - KTSPFMDB - ORA-600 [KTSPFMDB OBJDCHK_KCBNEW_3]
+- **[KTSP]** BUG 32498783 - STALE VALUE (KTSLXIDCHECK) IN PGA MAY CAUSE KTSJ BACKGROUND TO ASSERT  ※ KTSJ space mgmt 백그라운드
+
+## Database Release Update : 19.18.0.0.230117 (34765931)
+---
+
+- **[KTSP]** BUG 33198902 - AIM ORA-445 - KTSJ_SMCO_START_SLAVE  ※ SMCO/KTSJ space management worker
+- **[SLOW-DML]** BUG 34023117 - INSERT XML/OR AND OBJECTS SLOW ON 19C  ※ XML/Object insert 지연 (관련성 낮음)
+- **[KTSP]** BUG 33195330 - AIM ORA-600 [KTSPSCANINIT-L1] - KTSPSCANINIT  ※ ★핵심 후보: ktspScanInit = ASSM free block search의 L1 bitmap 스캔 초기화 함수 (증상 코드 경로와 일치, 단 표면 증상은 ORA-600)
+- **[KTSP]** BUG 33460265 - DUMP REDO FOR CORRUPT BLOCKS FOR ORA-600 [KTSLFSP FREEING TWICE]
+- **[KTSP]** BUG 34220609 - AIM ORA-445 - KTSJ_SMCO_START_SLAVE
+
+## Database Release Update : 19.19.0.0.230418 (35042068)
+---
+
+- **[KTSP]** BUG 34782556 - ORA-600 [[KTSLFSTLK]  LOCKER DIFFERENT] GENERATED BY AUTOSHRINK WHILE RUNNING FILESYSTEM WORKLOAD ON DBFS
+- **[SEGMENT-REPAIR]** BUG 34850178 - DISABLE DBMS_SPACE_ADMIN.SEGMENT_REPAIR FOR SECUREFILE LOB SEGMENTS
+- **[FREE-SPACE]** BUG 34561380 - IAD E43POD ORA-01658  UNABLE TO CREATE INITIAL EXTENT FOR SEGMENT IN TABLESPACE DATA_2 EVEN THOUGH THERE IS 70% FREE SPACE  ※ tablespace free space 산정 이슈 (관련성 낮음)
+
+## Database Release Update : 19.20.0.0.230718 (35320081)
+---
+
+- **[SLOW-DML]** BUG 34195583 - SLOW PERFORMANCE FOR INSERT IN ADBS  ※ 특정 기술 한정 없는 범용 insert 지연 버그 — ASSM 스캔 원인 가능성 배제 불가 (공개 상세 없음)
+- **[KTSP]** BUG 34875817 - KTSPNR_NEXT() CHECK RECYCLEBIN EVEN RECYCLEBIN = OFF  ※ KTSP next range 탐색 경로의 불필요한 작업
+
+## Database Release Update : 19.21.0.0.231017 (35643107)
+---
+
+- **[KTSP]** BUG 34415224 - XF23.1BOOLEANDT_SR2 - TRC - KTSLFBCHK - ORA-600 [KTSBLKCHECKERROR]
+
+## Database Release Update : 19.22.0.0.240116 (35943157)
+---
+
+- **[KTSP]** BUG 35223138 - AIM ORA-600 [KTSPGSB3 OBJDCHK_KCBGTCR_5] - KCB_OBJDCHK_ASSERT  ※ KTSP get space block 경로
+- **[FREE-SPACE]** BUG 34372875 - ADD A SPECIFIC TRACE NAME FOR RESERVED FREE LIST REPORT  ※ reserved free list 진단 (관련성 낮음)
+
+## Database Release Update : 19.23.0.0.240416 (36233263)
+---
+
+- **[KTSP]** BUG 32602450 - ASTS  ORA 600 [KTSPLBFMB-1  INCORRECT KEY IN LOB INDEX DURING SPACE RECLAMATION]  ※ space reclamation 경로
+- **[KTSP]** BUG 34291862 - ORA-00600 [KTSPGFB-1] OR ORA-600[KTECGSC OBJDCHK_KCBGTCR_5] ON UPDATE MV MASTER TABLE  ※ KTSP get free block 경로
+- **[FSG]** BUG 35582398 - SPACE LEAK WHEN ADDING AN FSG TO HEAD OF THE FREE LIST  ※ FSG를 free list head에 추가할 때 space leak → free block 추적 누락 계열
+- **[SPACE-LEAK]** BUG 34238259 - TRACKING BUG FOR SPACE LEAK IN KTSLA_SPLIT_CHUNK_MAIN() AFTER REMOVAL OF KTCROS()  ※ KTSLA space layer
+- **[SPACE-LEAK]** BUG 35642726 - SPACE LEAK IN SECURE FILE LOB
+
+## Database Release Update : 19.24.0.0.240716 (36582781)
+---
+
+- **[KTSP]** BUG 34684117 - ORA-600 [KTSPFMDB OBJDCHK_KCBNEW_3] ON 19.16 STANDBY_DB_PRESERVE_STATES= ALL
+- **[KTSP]** BUG 35179127 - SR23.1ADBD_LV32K_AS_LOB - TRC - KTSLHBCHK - ORA-600 [KTSBLKCHECKERROR]
+- **[KTSP]** BUG 35282257 - 1ST INSTANCE CRASHED  WITH [KTSPBLKCHEKERROR], [23], [890309], [18021]
+- **[KTSP]** BUG 36077556 - POD EIMD (KTSJADOMAIN/ESS_SOASERVER_HA) -BG PROCESS W00 HUNG ON LOB$ SEGMENT SPACE ALLOCATION  ※ segment space allocation hang (KTSJ 도메인)
+
+## Database Release Update : 19.27.0.0.250415 (37642901)
+---
+
+- **[KTSP]** BUG 36940644 - WHILE RUNNING TRUNCATE TABLE - ORA-00600 [KTSPR_CLEAR_RSV-1]
+- **[KTSP]** BUG 36837840 - AIM ORA-700 [KTSPFMTRNG_ALIGNED_3] - KTSPFMTRNG_ALIGNED  ※ KTSP format range 경로
+- **[KTSP]** BUG 36168776 - TO ADD MORE DIAGNOSTICS IN CUSTOMIZED INCIDENT DUMP FOR KTSPFMTRNG_ALIGNED_3
+
+## Database Release Update : 19.28.0.0.250715 (37960098)
+---
+
+- **[ASSM]** BUG 36733010 - [ASSM] AIM ORA-600 [KTSPNSC_GET_PARTKCTPH-1] - KTSPNSC_GET_PARTKCTPH  ※ 명시적 [ASSM] 태그 space mgmt 버그 (파티션 컨텍스트)
+- **[FREE-SPACE]** BUG 32761547 - FAST TABLESPACE FREE SPACE COMPUTATION IN SERVERLESS AUTONOMOUS DB.  ※ tablespace free space 산정 (관련성 낮음)
+- **[KTSP]** BUG 37181974 - ORA-00600  [KTSPSCANINIT-D], [537168] ON THE STANDBY  ※ ktspScanInit 계열이나 standby 환경 (관련성 낮음)
+
+## Database Release Update : 19.29.0.0.251021 (38291812)
+---
+
+- **[KTSP]** BUG 34479354 - PHX E3POD ZDV9OUM6UPLRZML_ATPOGLPHXPROD | LIBRARY CACHE LOCK WAITING FOR SPACE MANAGEMENT WORKER  ※ SMCO space management worker 대기 (관련성 낮음)
+
+## Database Release Update : 19.30.0.0.260120 (38632161)
+---
+
+- **[KTSP]** BUG 31475059 - XF21.1PX_RWI - TRC - KTSPFMTHWM - ORA-600 [KTSPFMTHWM]
+- **[FREE-SPACE]** BUG 37782978 - ORA-7445 WHEN CREATING AN ADV HI INDEX WITH ITL AND PCTFREE HIGH VALUES.  ※ PCTFREE/ITL 관련 (관련성 낮음)
+- **[KTSP]** BUG 38057468 - AIM ORA-600 [KTSPGTB-INC] - KTSPGTB2
+- **[KTSP]** BUG 38188808 - AVOID INSTANCE CRASH FOR  ORA-600[KTSPFSBMB OBJDCHK_KCBNEW_3] USING PDB ASSERT, SOFT ASSERT OR HANDLING INCONSISTENCY  ※ KTSP FS bitmap block 경로
+- **[FREE-SPACE]** BUG 37880683 - ORA-1653 TABLE EXPANSION ERROR IN FREESPACE (AFTER TRUNCATE OPERATION)  ※ truncate 후 free space 산정 오류
+
+## Database Release Update : 19.31.0.0.260421 (39034528)
+---
+
+- **[KTSP]** BUG 36098572 - ADG + AUTOCOMP  HIT ORA-00600 [KTSPFUPDST-12] IN TPCDS SCHEMA
+
+※ 19.32.0.0.260721 (39472050) DBRU 에는 ASSM/free space 관련 신규 수정 버그가 없습니다.
+
+---
+
+## 최종 정리: 증상과의 관련성이 가장 높은 대상
+
+1. **BUG 30265523** (19.7 fix) — ASSM bitmap free 상태 미갱신. fix control 32075777과 연계된
+   실사례(19.19)가 공개되어 있어 19c fixed bug list 내에서 증상과 가장 직접적으로 연결됨.
+2. **BUG 32234161** (19.10 fix) — ASSM segment repair(fix control 32075777) 제어 버그.
+   bitmap free space 상태 불일치 보정 메커니즘 자체.
+3. **BUG 29695987** (19.10 fix) — ktspGetNextL1ForScan: 증상의 L1 bitmap 스캔 코드 경로.
+4. **BUG 33195330** (19.18 fix) — ktspScanInit-L1: free block search 스캔 초기화 경로.
+5. **BUG 31767852** (19.11 fix) — DBMS_REPAIR.SEGMENT_FIX_STATUS(MOS 1263496.1의
+   workaround) 사용 후 KTSPBLKCHEKERROR.
+
+단, 정확한 증상(첫 INSERT 60~90초, rollback 후 재수행 시 1초 이내)은 19c fixed bug list가
+아닌 **Bug 7411960 + MOS Doc ID 1263496.1 "INSERT slow on ASSM"** 에 정확히 기술되어
+있으며 Oracle은 이를 expected behavior로 분류합니다. 19c에서의 완화 수단은
+`DBMS_REPAIR.SEGMENT_FIX_STATUS`, PCTFREE 상향, `_fix_control='32075777:ON'`(ASSM
+segment repair) 등이며, 실제 적용 전 반드시 테스트 환경에서 검증이 필요합니다.
